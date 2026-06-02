@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ESGFiap.csproj" />
+  <Project Path="tests/ESGFiap.Tests/ESGFiap.Tests.csproj" />
+</Solution>
