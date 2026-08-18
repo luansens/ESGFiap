@@ -8,7 +8,7 @@ namespace ESGFiap.Services;
 
 public class TokenService(IConfiguration configuration)
 {
-    public (string token, DateTime expiresAt) GenerateToken(ApplicationUser user, IList<string> roles)
+    public (string token, DateTime expiresAt) GenerateToken(UserDocument user)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!));
         var expiresAt = DateTime.UtcNow.AddHours(8);
@@ -16,10 +16,10 @@ public class TokenService(IConfiguration configuration)
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id),
-            new(ClaimTypes.Email, user.Email!),
+            new(ClaimTypes.Email, user.Email),
             new(ClaimTypes.Name, user.FullName)
         };
-        claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
+        claims.AddRange(user.Roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
         var token = new JwtSecurityToken(
             issuer: configuration["Jwt:Issuer"],

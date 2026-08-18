@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace ESGFiap.ViewModels.Report;
 
 public class ReportCreateViewModel
@@ -9,4 +11,6 @@ public class ReportCreateViewModel
     public decimal RegionalAverageLiters { get; set; }
     public string ImpactAnalysis { get; set; } = string.Empty;
     public string MitigationPlan { get; set; } = string.Empty;
+    public string ReportType { get; set; } = "WaterImpact";
+    public JsonElement? EsgMetrics { get; set; }
 }

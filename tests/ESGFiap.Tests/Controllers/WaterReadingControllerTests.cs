@@ -12,7 +12,7 @@ public class WaterReadingControllerTests(CustomWebApplicationFactory factory)
     public async Task InitializeAsync() => await factory.SeedAsync();
     public Task DisposeAsync() => Task.CompletedTask;
 
-    private async Task<(HttpClient client, int sensorId)> ClientWithSensor()
+    private async Task<(HttpClient client, string sensorId)> ClientWithSensor()
     {
         var client = factory.CreateClient();
         var token = await AuthHelper.GetTokenAsync(client);
@@ -86,6 +86,6 @@ public class WaterReadingControllerTests(CustomWebApplicationFactory factory)
         response.EnsureSuccessStatusCode();
     }
 
-    private record SensorId(int Id);
+    private record SensorId(string Id);
     private record ReadingResult(bool AlertGenerated);
 }

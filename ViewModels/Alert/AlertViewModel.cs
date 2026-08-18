@@ -1,21 +1,23 @@
+using System.Text.Json;
 using ESGFiap.Models;
 
 namespace ESGFiap.ViewModels.Alert;
 
 public class AlertViewModel
 {
-    public int Id { get; set; }
+    public string Id { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
     public string Severity { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public decimal DetectedLitersPerHour { get; set; }
     public DateTime DetectedAt { get; set; }
     public DateTime? ResolvedAt { get; set; }
-    public int SensorId { get; set; }
+    public string SensorId { get; set; } = string.Empty;
     public string SensorName { get; set; } = string.Empty;
     public string SensorLocation { get; set; } = string.Empty;
+    public List<JsonElement>? ResolutionActions { get; set; }
 
-    public static AlertViewModel FromModel(LeakAlert a) => new()
+    public static AlertViewModel FromModel(AlertDocument a) => new()
     {
         Id = a.Id,
         Message = a.Message,
@@ -25,7 +27,8 @@ public class AlertViewModel
         DetectedAt = a.DetectedAt,
         ResolvedAt = a.ResolvedAt,
         SensorId = a.SensorId,
-        SensorName = a.Sensor?.Name ?? string.Empty,
-        SensorLocation = a.Sensor?.Location ?? string.Empty
+        SensorName = a.SensorName,
+        SensorLocation = a.SensorLocation,
+        ResolutionActions = a.ResolutionActions.ToJsonElements()
     };
 }

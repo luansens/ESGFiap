@@ -5,14 +5,15 @@ using ESGFiap.ViewModels.Alert;
 using ESGFiap.ViewModels.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Bson;
+using MongoDB.Driver;
 
 namespace ESGFiap.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class AlertController(AppDbContext db) : ControllerBase
+public class AlertController(MongoContext mongo) : ControllerBase
 {
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -22,51 +23,61 @@ public class AlertController(AppDbContext db) : ControllerBase
         [FromQuery] AlertStatus? status,
         [FromQuery] AlertSeverity? severity)
     {
-        var query = db.LeakAlerts
-            .Include(a => a.Sensor)
-            .Where(a => a.Sensor.UserId == UserId);
+        var filterBuilder = Builders<AlertDocument>.Filter;
+        var filter = filterBuilder.Eq(a => a.UserId, UserId);
+        if (status.HasValue) filter &= filterBuilder.Eq(a => a.Status, status.Value);
+        if (severity.HasValue) filter &= filterBuilder.Eq(a => a.Severity, severity.Value);
 
-        if (status.HasValue)   query = query.Where(a => a.Status == status.Value);
-        if (severity.HasValue) query = query.Where(a => a.Severity == severity.Value);
-
-        var total = await query.CountAsync();
-        var items = await query
-            .OrderByDescending(a => a.DetectedAt)
+        var total = (int)await mongo.Alerts.CountDocumentsAsync(filter);
+        var items = await mongo.Alerts.Find(filter)
+            .SortByDescending(a => a.DetectedAt)
             .Skip((paging.Page - 1) * paging.PageSize)
-            .Take(paging.PageSize)
-            .Select(a => AlertViewModel.FromModel(a))
+            .Limit(paging.PageSize)
             .ToListAsync();
 
         return Ok(new PagedResult<AlertViewModel>
         {
-            Data = items,
+            Data = items.Select(AlertViewModel.FromModel),
             Page = paging.Page,
             PageSize = paging.PageSize,
             TotalCount = total
         });
     }
 
-    [HttpGet("{id:int}")]
-    public async Task<IActionResult> GetById(int id)
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetById(string id)
     {
-        var alert = await db.LeakAlerts.Include(a => a.Sensor)
-            .FirstOrDefaultAsync(a => a.Id == id && a.Sensor.UserId == UserId);
+        if (!id.IsValidObjectId()) return NotFound();
+
+        var alert = await mongo.Alerts.Find(a => a.Id == id && a.UserId == UserId).FirstOrDefaultAsync();
         return alert is null ? NotFound() : Ok(AlertViewModel.FromModel(alert));
     }
 
-    [HttpPatch("{id:int}/status")]
-    public async Task<IActionResult> UpdateStatus(int id, AlertUpdateViewModel model)
+    [HttpPatch("{id}/status")]
+    public async Task<IActionResult> UpdateStatus(string id, AlertUpdateViewModel model)
     {
-        var alert = await db.LeakAlerts.Include(a => a.Sensor)
-            .FirstOrDefaultAsync(a => a.Id == id && a.Sensor.UserId == UserId);
+        if (!id.IsValidObjectId()) return NotFound();
+
+        var alert = await mongo.Alerts.Find(a => a.Id == id && a.UserId == UserId).FirstOrDefaultAsync();
         if (alert is null) return NotFound();
 
-        alert.Status = model.Status;
+        var update = Builders<AlertDocument>.Update.Set(a => a.Status, model.Status);
         if (model.Status == AlertStatus.Resolved)
-            alert.ResolvedAt = DateTime.UtcNow;
+        {
+            var resolvedAt = DateTime.UtcNow;
+            update = update
+                .Set(a => a.ResolvedAt, resolvedAt)
+                .Push(a => a.ResolutionActions, new BsonDocument
+                {
+                    { "action", "Resolved" },
+                    { "by", UserId },
+                    { "at", resolvedAt }
+                });
+        }
 
-        await db.SaveChangesAsync();
-        return Ok(AlertViewModel.FromModel(alert));
+        await mongo.Alerts.UpdateOneAsync(a => a.Id == id, update);
+        var updated = await mongo.Alerts.Find(a => a.Id == id).FirstAsync();
+        return Ok(AlertViewModel.FromModel(updated));
     }
 
     [HttpGet("all")]
@@ -75,20 +86,20 @@ public class AlertController(AppDbContext db) : ControllerBase
         [FromQuery] PagedRequest paging,
         [FromQuery] AlertStatus? status)
     {
-        var query = db.LeakAlerts.Include(a => a.Sensor).AsQueryable();
-        if (status.HasValue) query = query.Where(a => a.Status == status.Value);
+        var filter = status.HasValue
+            ? Builders<AlertDocument>.Filter.Eq(a => a.Status, status.Value)
+            : Builders<AlertDocument>.Filter.Empty;
 
-        var total = await query.CountAsync();
-        var items = await query
-            .OrderByDescending(a => a.DetectedAt)
+        var total = (int)await mongo.Alerts.CountDocumentsAsync(filter);
+        var items = await mongo.Alerts.Find(filter)
+            .SortByDescending(a => a.DetectedAt)
             .Skip((paging.Page - 1) * paging.PageSize)
-            .Take(paging.PageSize)
-            .Select(a => AlertViewModel.FromModel(a))
+            .Limit(paging.PageSize)
             .ToListAsync();
 
         return Ok(new PagedResult<AlertViewModel>
         {
-            Data = items,
+            Data = items.Select(AlertViewModel.FromModel),
             Page = paging.Page,
             PageSize = paging.PageSize,
             TotalCount = total

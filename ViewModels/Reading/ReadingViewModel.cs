@@ -1,23 +1,26 @@
+using System.Text.Json;
 using ESGFiap.Models;
 
 namespace ESGFiap.ViewModels.Reading;
 
 public class ReadingViewModel
 {
-    public int Id { get; set; }
+    public string Id { get; set; } = string.Empty;
     public decimal LitersPerHour { get; set; }
     public decimal PressureBar { get; set; }
     public DateTime ReadingAt { get; set; }
-    public int SensorId { get; set; }
+    public string SensorId { get; set; } = string.Empty;
     public string SensorName { get; set; } = string.Empty;
+    public JsonElement? Quality { get; set; }
 
-    public static ReadingViewModel FromModel(WaterReading r) => new()
+    public static ReadingViewModel FromModel(ReadingDocument r) => new()
     {
         Id = r.Id,
         LitersPerHour = r.LitersPerHour,
         PressureBar = r.PressureBar,
         ReadingAt = r.ReadingAt,
         SensorId = r.SensorId,
-        SensorName = r.Sensor?.Name ?? string.Empty
+        SensorName = r.SensorName,
+        Quality = r.Quality.ToJsonElement()
     };
 }

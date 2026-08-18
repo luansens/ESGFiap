@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ESGFiap.Models;
 
 namespace ESGFiap.ViewModels.Sensor;
@@ -8,4 +9,5 @@ public class SensorCreateViewModel
     public string Location { get; set; } = string.Empty;
     public SensorType Type { get; set; }
     public decimal AlertThresholdLitersPerHour { get; set; }
+    public JsonElement? Specs { get; set; }
 }

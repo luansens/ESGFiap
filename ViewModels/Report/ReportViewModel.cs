@@ -1,10 +1,11 @@
+using System.Text.Json;
 using ESGFiap.Models;
 
 namespace ESGFiap.ViewModels.Report;
 
 public class ReportViewModel
 {
-    public int Id { get; set; }
+    public string Id { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string Region { get; set; } = string.Empty;
     public DateTime PeriodStart { get; set; }
@@ -16,8 +17,10 @@ public class ReportViewModel
     public string MitigationPlan { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public string UserName { get; set; } = string.Empty;
+    public string ReportType { get; set; } = string.Empty;
+    public JsonElement? EsgMetrics { get; set; }
 
-    public static ReportViewModel FromModel(WaterImpactReport r) => new()
+    public static ReportViewModel FromModel(ReportDocument r) => new()
     {
         Id = r.Id,
         Title = r.Title,
@@ -31,6 +34,8 @@ public class ReportViewModel
         ImpactAnalysis = r.ImpactAnalysis,
         MitigationPlan = r.MitigationPlan,
         CreatedAt = r.CreatedAt,
-        UserName = r.User?.FullName ?? string.Empty
+        UserName = r.UserName,
+        ReportType = r.ReportType,
+        EsgMetrics = r.EsgMetrics.ToJsonElement()
     };
 }

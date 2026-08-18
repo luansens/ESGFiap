@@ -5,97 +5,101 @@ using ESGFiap.ViewModels.Common;
 using ESGFiap.ViewModels.Sensor;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 
 namespace ESGFiap.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class SensorController(AppDbContext db) : ControllerBase
+public class SensorController(MongoContext mongo) : ControllerBase
 {
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] PagedRequest paging)
     {
-        var query = db.WaterSensors.Where(s => s.UserId == UserId);
+        var filter = Builders<SensorDocument>.Filter.Eq(s => s.UserId, UserId);
 
-        var total = await query.CountAsync();
-        var items = await query
-            .OrderBy(s => s.Name)
+        var total = (int)await mongo.Sensors.CountDocumentsAsync(filter);
+        var items = await mongo.Sensors.Find(filter)
+            .SortBy(s => s.Name)
             .Skip((paging.Page - 1) * paging.PageSize)
-            .Take(paging.PageSize)
-            .Select(s => SensorViewModel.FromModel(s))
+            .Limit(paging.PageSize)
             .ToListAsync();
 
         return Ok(new PagedResult<SensorViewModel>
         {
-            Data = items,
+            Data = items.Select(SensorViewModel.FromModel),
             Page = paging.Page,
             PageSize = paging.PageSize,
             TotalCount = total
         });
     }
 
-    [HttpGet("{id:int}")]
-    public async Task<IActionResult> GetById(int id)
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetById(string id)
     {
-        var sensor = await db.WaterSensors
-            .FirstOrDefaultAsync(s => s.Id == id && s.UserId == UserId);
+        if (!id.IsValidObjectId()) return NotFound();
+
+        var sensor = await mongo.Sensors.Find(s => s.Id == id && s.UserId == UserId).FirstOrDefaultAsync();
         return sensor is null ? NotFound() : Ok(SensorViewModel.FromModel(sensor));
     }
 
     [HttpPost]
     public async Task<IActionResult> Create(SensorCreateViewModel model)
     {
-        var sensor = new WaterSensor
+        var sensor = new SensorDocument
         {
             Name = model.Name,
             Location = model.Location,
             Type = model.Type,
             AlertThresholdLitersPerHour = model.AlertThresholdLitersPerHour,
-            UserId = UserId
+            UserId = UserId,
+            Specs = model.Specs.ToBsonDocument()
         };
-        db.WaterSensors.Add(sensor);
-        await db.SaveChangesAsync();
+        await mongo.Sensors.InsertOneAsync(sensor);
         return CreatedAtAction(nameof(GetById), new { id = sensor.Id }, SensorViewModel.FromModel(sensor));
     }
 
-    [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, SensorCreateViewModel model)
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(string id, SensorCreateViewModel model)
     {
-        var sensor = await db.WaterSensors.FirstOrDefaultAsync(s => s.Id == id && s.UserId == UserId);
-        if (sensor is null) return NotFound();
+        if (!id.IsValidObjectId()) return NotFound();
 
-        sensor.Name = model.Name;
-        sensor.Location = model.Location;
-        sensor.Type = model.Type;
-        sensor.AlertThresholdLitersPerHour = model.AlertThresholdLitersPerHour;
+        var update = Builders<SensorDocument>.Update
+            .Set(s => s.Name, model.Name)
+            .Set(s => s.Location, model.Location)
+            .Set(s => s.Type, model.Type)
+            .Set(s => s.AlertThresholdLitersPerHour, model.AlertThresholdLitersPerHour)
+            .Set(s => s.Specs, model.Specs.ToBsonDocument());
 
-        await db.SaveChangesAsync();
-        return NoContent();
+        var result = await mongo.Sensors.UpdateOneAsync(
+            s => s.Id == id && s.UserId == UserId, update);
+
+        return result.MatchedCount == 0 ? NotFound() : NoContent();
     }
 
-    [HttpPatch("{id:int}/toggle")]
-    public async Task<IActionResult> ToggleActive(int id)
+    [HttpPatch("{id}/toggle")]
+    public async Task<IActionResult> ToggleActive(string id)
     {
-        var sensor = await db.WaterSensors.FirstOrDefaultAsync(s => s.Id == id && s.UserId == UserId);
+        if (!id.IsValidObjectId()) return NotFound();
+
+        var sensor = await mongo.Sensors.Find(s => s.Id == id && s.UserId == UserId).FirstOrDefaultAsync();
         if (sensor is null) return NotFound();
 
-        sensor.IsActive = !sensor.IsActive;
-        await db.SaveChangesAsync();
-        return Ok(new { sensor.Id, sensor.IsActive });
+        var update = Builders<SensorDocument>.Update.Set(s => s.IsActive, !sensor.IsActive);
+        await mongo.Sensors.UpdateOneAsync(s => s.Id == id, update);
+
+        return Ok(new { sensor.Id, IsActive = !sensor.IsActive });
     }
 
-    [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Delete(int id)
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(string id)
     {
-        var sensor = await db.WaterSensors.FirstOrDefaultAsync(s => s.Id == id && s.UserId == UserId);
-        if (sensor is null) return NotFound();
+        if (!id.IsValidObjectId()) return NotFound();
 
-        db.WaterSensors.Remove(sensor);
-        await db.SaveChangesAsync();
-        return NoContent();
+        var result = await mongo.Sensors.DeleteOneAsync(s => s.Id == id && s.UserId == UserId);
+        return result.DeletedCount == 0 ? NotFound() : NoContent();
     }
 }

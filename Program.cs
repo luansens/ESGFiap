@@ -1,30 +1,18 @@
 using System.Reflection;
 using System.Text;
 using ESGFiap.Data;
-using ESGFiap.Models;
 using ESGFiap.Services;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>(opt =>
-{
-    opt.Password.RequiredLength = 6;
-    opt.Password.RequireNonAlphanumeric = false;
-    opt.Password.RequireUppercase = false;
-})
-.AddEntityFrameworkStores<AppDbContext>()
-.AddDefaultTokenProviders();
+builder.Services.Configure<MongoSettings>(builder.Configuration.GetSection("Mongo"));
+builder.Services.AddSingleton<MongoContext>();
 
 var jwtKey = builder.Configuration["Jwt:Key"]!;
 builder.Services.AddAuthentication(opt =>
@@ -98,17 +86,8 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-    if (db.Database.IsRelational())
-        db.Database.Migrate();
-    else
-        db.Database.EnsureCreated();
-
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    foreach (var role in new[] { "Admin", "User" })
-        if (!await roleManager.RoleExistsAsync(role))
-            await roleManager.CreateAsync(new IdentityRole(role));
+    var mongo = scope.ServiceProvider.GetRequiredService<MongoContext>();
+    await mongo.EnsureIndexesAsync();
 }
 
 app.UseExceptionHandler(err => err.Run(async ctx =>
@@ -131,4 +110,3 @@ app.MapControllers();
 app.Run();
 
 public partial class Program { }
-

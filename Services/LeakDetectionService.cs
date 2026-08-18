@@ -3,9 +3,9 @@ using ESGFiap.Models;
 
 namespace ESGFiap.Services;
 
-public class LeakDetectionService(AppDbContext db)
+public class LeakDetectionService(MongoContext mongo)
 {
-    public async Task<LeakAlert?> AnalyzeReading(WaterReading reading, WaterSensor sensor)
+    public async Task<AlertDocument?> AnalyzeReading(ReadingDocument reading, SensorDocument sensor)
     {
         if (reading.LitersPerHour <= sensor.AlertThresholdLitersPerHour)
             return null;
@@ -21,9 +21,12 @@ public class LeakDetectionService(AppDbContext db)
             _     => AlertSeverity.Critical
         };
 
-        var alert = new LeakAlert
+        var alert = new AlertDocument
         {
             SensorId = sensor.Id,
+            SensorName = sensor.Name,
+            SensorLocation = sensor.Location,
+            UserId = sensor.UserId,
             DetectedLitersPerHour = reading.LitersPerHour,
             Severity = severity,
             Message = $"Consumo de {reading.LitersPerHour:F1} L/h detectado em '{sensor.Location}'. " +
@@ -31,8 +34,7 @@ public class LeakDetectionService(AppDbContext db)
                       $"({percentageOver:F0}% acima do limite)."
         };
 
-        db.LeakAlerts.Add(alert);
-        await db.SaveChangesAsync();
+        await mongo.Alerts.InsertOneAsync(alert);
         return alert;
     }
 }

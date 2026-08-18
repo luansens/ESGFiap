@@ -6,44 +6,44 @@ using ESGFiap.ViewModels.Common;
 using ESGFiap.ViewModels.Reading;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 
 namespace ESGFiap.Controllers;
 
 [ApiController]
-[Route("api/sensor/{sensorId:int}/readings")]
+[Route("api/sensor/{sensorId}/readings")]
 [Authorize]
-public class WaterReadingController(AppDbContext db, LeakDetectionService leakService) : ControllerBase
+public class WaterReadingController(MongoContext mongo, LeakDetectionService leakService) : ControllerBase
 {
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
-        int sensorId,
+        string sensorId,
         [FromQuery] PagedRequest paging,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to)
     {
-        var owns = await db.WaterSensors.AnyAsync(s => s.Id == sensorId && s.UserId == UserId);
+        if (!sensorId.IsValidObjectId()) return NotFound();
+
+        var owns = await mongo.Sensors.Find(s => s.Id == sensorId && s.UserId == UserId).AnyAsync();
         if (!owns) return NotFound();
 
-        var query = db.WaterReadings.Include(r => r.Sensor)
-            .Where(r => r.SensorId == sensorId);
+        var filterBuilder = Builders<ReadingDocument>.Filter;
+        var filter = filterBuilder.Eq(r => r.SensorId, sensorId);
+        if (from.HasValue) filter &= filterBuilder.Gte(r => r.ReadingAt, from.Value);
+        if (to.HasValue) filter &= filterBuilder.Lte(r => r.ReadingAt, to.Value);
 
-        if (from.HasValue) query = query.Where(r => r.ReadingAt >= from.Value);
-        if (to.HasValue)   query = query.Where(r => r.ReadingAt <= to.Value);
-
-        var total = await query.CountAsync();
-        var items = await query
-            .OrderByDescending(r => r.ReadingAt)
+        var total = (int)await mongo.Readings.CountDocumentsAsync(filter);
+        var items = await mongo.Readings.Find(filter)
+            .SortByDescending(r => r.ReadingAt)
             .Skip((paging.Page - 1) * paging.PageSize)
-            .Take(paging.PageSize)
-            .Select(r => ReadingViewModel.FromModel(r))
+            .Limit(paging.PageSize)
             .ToListAsync();
 
         return Ok(new PagedResult<ReadingViewModel>
         {
-            Data = items,
+            Data = items.Select(ReadingViewModel.FromModel),
             Page = paging.Page,
             PageSize = paging.PageSize,
             TotalCount = total
@@ -51,16 +51,16 @@ public class WaterReadingController(AppDbContext db, LeakDetectionService leakSe
     }
 
     [HttpGet("summary")]
-    public async Task<IActionResult> GetSummary(int sensorId)
+    public async Task<IActionResult> GetSummary(string sensorId)
     {
-        var owns = await db.WaterSensors.AnyAsync(s => s.Id == sensorId && s.UserId == UserId);
+        if (!sensorId.IsValidObjectId()) return NotFound();
+
+        var owns = await mongo.Sensors.Find(s => s.Id == sensorId && s.UserId == UserId).AnyAsync();
         if (!owns) return NotFound();
 
-        var readings = await db.WaterReadings
-            .Where(r => r.SensorId == sensorId)
-            .ToListAsync();
+        var readings = await mongo.Readings.Find(r => r.SensorId == sensorId).ToListAsync();
 
-        if (!readings.Any())
+        if (readings.Count == 0)
             return Ok(new { message = "Sem leituras registradas." });
 
         return Ok(new
@@ -74,22 +74,24 @@ public class WaterReadingController(AppDbContext db, LeakDetectionService leakSe
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(int sensorId, ReadingCreateViewModel model)
+    public async Task<IActionResult> Create(string sensorId, ReadingCreateViewModel model)
     {
-        var sensor = await db.WaterSensors
-            .FirstOrDefaultAsync(s => s.Id == sensorId && s.UserId == UserId);
+        if (!sensorId.IsValidObjectId()) return NotFound();
+
+        var sensor = await mongo.Sensors.Find(s => s.Id == sensorId && s.UserId == UserId).FirstOrDefaultAsync();
         if (sensor is null) return NotFound();
         if (!sensor.IsActive) return BadRequest("Sensor inativo.");
 
-        var reading = new WaterReading
+        var reading = new ReadingDocument
         {
             SensorId = sensorId,
+            SensorName = sensor.Name,
             LitersPerHour = model.LitersPerHour,
             PressureBar = model.PressureBar,
-            ReadingAt = model.ReadingAt ?? DateTime.UtcNow
+            ReadingAt = model.ReadingAt ?? DateTime.UtcNow,
+            Quality = model.Quality.ToBsonDocument()
         };
-        db.WaterReadings.Add(reading);
-        await db.SaveChangesAsync();
+        await mongo.Readings.InsertOneAsync(reading);
 
         var alert = await leakService.AnalyzeReading(reading, sensor);
 
@@ -97,17 +99,15 @@ public class WaterReadingController(AppDbContext db, LeakDetectionService leakSe
             new { Reading = ReadingViewModel.FromModel(reading), AlertGenerated = alert is not null });
     }
 
-    [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Delete(int sensorId, int id)
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(string sensorId, string id)
     {
-        var owns = await db.WaterSensors.AnyAsync(s => s.Id == sensorId && s.UserId == UserId);
+        if (!sensorId.IsValidObjectId() || !id.IsValidObjectId()) return NotFound();
+
+        var owns = await mongo.Sensors.Find(s => s.Id == sensorId && s.UserId == UserId).AnyAsync();
         if (!owns) return NotFound();
 
-        var reading = await db.WaterReadings.FirstOrDefaultAsync(r => r.Id == id && r.SensorId == sensorId);
-        if (reading is null) return NotFound();
-
-        db.WaterReadings.Remove(reading);
-        await db.SaveChangesAsync();
-        return NoContent();
+        var result = await mongo.Readings.DeleteOneAsync(r => r.Id == id && r.SensorId == sensorId);
+        return result.DeletedCount == 0 ? NotFound() : NoContent();
     }
 }
