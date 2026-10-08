@@ -395,7 +395,7 @@ visualmente pelas 5 collections e suas operações).
 ## 6. Como reproduzir
 
 ```bash
-# 1. Suba o MongoDB
+# 1. Suba o MongoDB (ambiente dev)
 docker compose up -d mongo
 
 # 2. Rode a API (usa appsettings.Development.json -> localhost:27017)
@@ -411,6 +411,37 @@ docker exec -i esgfiap-mongo mongosh -u esgfiap -p 'ESGFiap@2024!' \
 # 4. Rode os testes de integração (usam um banco Mongo real e efêmero)
 dotnet test tests/ESGFiap.Tests/ESGFiap.Tests.csproj
 ```
+
+### 6.1 Multi-ambiente (dev / staging / prod)
+
+Há três arquivos de compose, um por ambiente. Os três usam volumes distintos,
+de modo que os dados **não** são compartilhados entre dev, staging e prod.
+
+| Ambiente | Arquivo | `ASPNETCORE_ENVIRONMENT` | API | Mongo no host | Restart | Volume |
+|----------|---------|---------------------------|-----|---------------|---------|--------|
+| Dev | `docker-compose.yml` | `Development` | `8080` | `27017` exposto | — | `mongo_data` |
+| Staging | `docker-compose.staging.yml` | `Staging` | `8081` | não exposto | `unless-stopped` | `mongo_staging_data` |
+| Prod | `docker-compose.prod.yml` | `Production` | `80` | não exposto | `always` | `mongo_prod_data` |
+
+```bash
+# Dev (arquivo padrão, carregado automaticamente)
+docker compose up -d
+
+# Staging
+docker compose -f docker-compose.staging.yml up -d
+
+# Prod
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Observações:
+- O Swagger só é exposto em `Development` (`Program.cs`), então fica disponível
+  apenas no dev; staging e prod não o expõem.
+- Em staging/prod o MongoDB **não** publica a porta `27017` no host — só é
+  acessível pela rede interna do compose (mais próximo de um ambiente real).
+- **Limitação (didática):** a senha do MongoDB e a `Jwt__Key` continuam
+  embutidas nos arquivos de compose. Em um projeto real elas viriam de
+  variáveis de ambiente / *secrets* e não seriam versionadas.
 
 ---
 

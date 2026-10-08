@@ -1,0 +1,40 @@
+name: esgfiap-prod
+
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: esgfiap-mongo-prod
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: esgfiap
+      MONGO_INITDB_ROOT_PASSWORD: "ESGFiap@2024!"
+    restart: always
+    volumes:
+      - mongo_prod_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: esgfiap-api-prod
+    ports:
+      - "80:8080"
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Mongo__ConnectionString: "mongodb://esgfiap:ESGFiap%402024!@mongo:27017"
+      Mongo__DatabaseName: "esgfiap"
+      Jwt__Key: "ESGFiapSuperSecretKey2024!MustBe32Chars"
+      Jwt__Issuer: "ESGFiap"
+      Jwt__Audience: "ESGFiapUsers"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo_prod_data:

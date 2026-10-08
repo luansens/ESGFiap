@@ -23,7 +23,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       Mongo__ConnectionString: "mongodb://esgfiap:ESGFiap%402024!@mongo:27017"
       Mongo__DatabaseName: "esgfiap"

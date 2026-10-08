@@ -1,0 +1,40 @@
+name: esgfiap-staging
+
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: esgfiap-mongo-staging
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: esgfiap
+      MONGO_INITDB_ROOT_PASSWORD: "ESGFiap@2024!"
+    restart: unless-stopped
+    volumes:
+      - mongo_staging_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: esgfiap-api-staging
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+      ASPNETCORE_URLS: http://+:8080
+      Mongo__ConnectionString: "mongodb://esgfiap:ESGFiap%402024!@mongo:27017"
+      Mongo__DatabaseName: "esgfiap"
+      Jwt__Key: "ESGFiapSuperSecretKey2024!MustBe32Chars"
+      Jwt__Issuer: "ESGFiap"
+      Jwt__Audience: "ESGFiapUsers"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo_staging_data:
