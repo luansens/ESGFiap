@@ -7,21 +7,30 @@ on:
   pull_request:
     branches: [main]
 
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    env:
+      Mongo__ConnectionString: "mongodb://esgfiap:${{ secrets.MONGO_PASSWORD }}@localhost:27017/?authSource=admin"
+      Mongo__DatabaseName: esgfiap
+
     services:
       mongodb:
-        image: mongo:7
+        image: mongo:8.0
         ports:
           - 27017:27017
+        env:
+          MONGO_INITDB_ROOT_USERNAME: esgfiap
+          MONGO_INITDB_ROOT_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
         options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\")'"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
+    
     steps:
       - name: Baixar o código
         uses: actions/checkout@v4
