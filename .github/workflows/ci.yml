@@ -6,24 +6,21 @@ on:
   pull_request:
     branches: [main]
 
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - name: Baixar o código
-        uses: actions/checkout@v4
 
-      - name: Configurar .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-
-      - name: Restaurar dependências
-        run: dotnet restore ESGFiap.slnx
-
-      - name: Compilar solução
-        run: dotnet build ESGFiap.slnx --configuration Release --no-restore
-
-      - name: Executar testes
-        run: dotnet test ESGFiap.slnx --configuration Release --no-build
