@@ -95,9 +95,21 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
           
+  deploy-staging:
+    name: Deploy no Render - Staging
+    needs: publish-image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar deploy do staging
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_STAGING_DEPLOY_HOOK }}
+        run: curl --fail --silent --show-error "$RENDER_DEPLOY_HOOK"
+
+
   deploy-render:
     name: Deploy no Render
-    needs: publish-image
+    needs: deploy-staging
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
